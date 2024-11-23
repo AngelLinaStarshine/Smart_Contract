@@ -1,0 +1,78 @@
+// SPDX-License-Identifier: CC-BY-SA-4.0
+pragma solidity ^0.6.12;
+
+import "@openzeppelin/contracts/math/SafeMath.sol";
+
+contract Timelock {
+    using SafeMath for uint256;
+
+    struct UserData {
+        uint256 balance;
+        uint256 lockTime;
+        uint256 collateral;
+    }
+
+    mapping(address => UserData) private users;
+
+    event Deposit(address indexed user, uint256 amount, uint256 lockTime);
+    event Withdrawal(address indexed user, uint256 amount);
+    event CollateralIncreased(address indexed user, uint256 amount);
+    event CollateralWithdrawn(address indexed user, uint256 amount);
+
+    function deposit() external payable {
+        require(msg.value > 0, "Deposit amount must be greater than 0");
+
+        UserData storage user = users[msg.sender];
+        user.balance = user.balance.add(msg.value);
+        user.lockTime = block.timestamp.add(3 weeks);
+
+        emit Deposit(msg.sender, msg.value, user.lockTime);
+    }
+
+    function withdraw() external {
+        UserData storage user = users[msg.sender];
+        uint256 userBalance = user.balance;
+
+        require(userBalance > 0, "Insufficient balance");
+        require(block.timestamp > user.lockTime, "Funds are still locked");
+
+        user.balance = 0; 
+        msg.sender.transfer(userBalance);
+
+        emit Withdrawal(msg.sender, userBalance);
+    }
+
+    function increaseLockTime(uint256 _secondsToIncrease) external {
+        require(_secondsToIncrease > 0, "Increase time must be greater than 0");
+
+        users[msg.sender].lockTime = users[msg.sender].lockTime.add(_secondsToIncrease);
+    }
+
+    function increaseCollateral() external payable {
+        require(msg.value > 0, "Collateral amount must be greater than 0");
+
+        UserData storage user = users[msg.sender];
+        user.collateral = user.collateral.add(msg.value);
+
+        emit CollateralIncreased(msg.sender, msg.value);
+    }
+
+    function withdrawCollateral(uint256 amount) external {
+        UserData storage user = users[msg.sender];
+        require(user.collateral >= amount, "Insufficient collateral");
+
+        user.collateral = user.collateral.sub(amount);
+        msg.sender.transfer(amount);
+
+        emit CollateralWithdrawn(msg.sender, amount);
+    }
+
+    function getUserData(address user)
+        external
+        view
+        returns (uint256 balance, uint256 lockTime, uint256 collateral)
+    {
+        UserData storage userData = users[user];
+        return (userData.balance, userData.lockTime, userData.collateral);
+    }
+}
